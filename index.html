@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MemoryFlow Pro - 智能複習助手</title>
     <style>
-        :root { --primary: #4a90e2; --bg: #f5f7fa; --card: #ffffff; --success: #27ae60; --danger: #e74c3c; }
+        :root { --primary: #4a90e2; --bg: #f5f7fa; --card: #ffffff; --success: #27ae60; --danger: #e74c3c; --warning: #f39c12; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .container { max-width: 500px; width: 100%; }
         .card { background: var(--card); padding: 20px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
@@ -19,6 +19,16 @@
         .hidden { display: none; }
         .user-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .user-tag { font-size: 0.9em; color: var(--primary); font-weight: bold; }
+        
+        /* 新增清單樣式 */
+        .all-items-list { list-style: none; padding: 0; margin-top: 10px; }
+        .item-row { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; font-size: 14px; }
+        .time-tag { font-size: 12px; padding: 2px 6px; border-radius: 4px; color: white; }
+        .tag-due { background: var(--danger); }
+        .tag-wait { background: var(--warning); }
+        .del-btn { background: none; color: #ccc; width: auto; padding: 0 5px; margin: 0; border: none; font-size: 18px; }
+        .del-btn:hover { color: var(--danger); }
+        
         .backup-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
         .btn-alt { background: #f0f2f5; color: #333; border: 1px solid #ddd; font-size: 13px; }
     </style>
@@ -47,6 +57,11 @@
         <h3>📅 今日待複習</h3>
         <div id="review-list"></div>
 
+        <div class="card">
+            <h3>📊 所有複習清單</h3>
+            <div id="full-inventory" class="all-items-list"></div>
+        </div>
+
         <div class="backup-btns">
             <button class="btn-alt" onclick="exportData()">📥 匯出進度備份</button>
             <button class="btn-alt" onclick="document.getElementById('importFile').click()">📤 匯入備份檔案</button>
@@ -59,7 +74,6 @@
     let currentUser = "";
     let data = [];
 
-    // 登入邏輯
     function login() {
         const name = document.getElementById('username').value.trim();
         if (!name) return alert("請輸入名字");
@@ -83,7 +97,6 @@
         render();
     }
 
-    // 新增項目
     function addItem() {
         const content = document.getElementById('new-item').value.trim();
         if (!content) return;
@@ -91,86 +104,111 @@
             id: Date.now(),
             content: content,
             nextReview: Date.now(),
-            interval: 1 // 初始間隔(小時)
+            interval: 1 
         });
         document.getElementById('new-item').value = "";
         saveData();
     }
 
-    // 複習邏輯：1-5 分評分
+    function deleteItem(id) {
+        if(confirm("確定要刪除這個項目嗎？")) {
+            data = data.filter(i => i.id !== id);
+            saveData();
+        }
+    }
+
     function handleReview(id, score) {
         const item = data.find(i => i.id === id);
-        const factors = { 1: 0, 2: 1.5, 3: 3, 4: 8, 5: 24 }; // 難度加權係數
-        
+        const factors = { 1: 0, 2: 1.5, 3: 3, 4: 8, 5: 24 };
         if (score === 1) {
-            item.interval = 1; // 忘記了，1小時後重來
+            item.interval = 1;
         } else {
             item.interval = Math.max(1, item.interval * factors[score]);
         }
-        
         item.nextReview = Date.now() + (item.interval * 60 * 60 * 1000);
         saveData();
     }
 
-    // 渲染清單
+    // 計算剩餘時間的文字
+    function getTimeLeft(targetTime) {
+        const diff = targetTime - Date.now();
+        if (diff <= 0) return { text: "現在", class: "tag-due" };
+        
+        const mins = Math.floor(diff / (1000 * 60));
+        const hours = Math.floor(mins / 60);
+        const days = Math.floor(hours / 24);
+
+        if (days > 0) return { text: `${days}天後`, class: "tag-wait" };
+        if (hours > 0) return { text: `${hours}小時後`, class: "tag-wait" };
+        return { text: `${mins}分鐘後`, class: "tag-wait" };
+    }
+
     function render() {
-        const list = document.getElementById('review-list');
-        list.innerHTML = "";
         const now = Date.now();
+        
+        // 1. 渲染今日待複習
+        const reviewList = document.getElementById('review-list');
+        reviewList.innerHTML = "";
         const dueItems = data.filter(item => item.nextReview <= now);
 
         if (dueItems.length === 0) {
-            list.innerHTML = "<div style='text-align:center; padding:20px; color:#888;'>目前沒任務，去休息吧！☕</div>";
-            return;
+            reviewList.innerHTML = "<div style='text-align:center; padding:10px; color:#888; font-size:14px;'>目前沒有到期的任務</div>";
+        } else {
+            dueItems.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerHTML = `
+                    <div style="font-size:18px; font-weight:bold; margin-bottom:15px;">${item.content}</div>
+                    <div class="score-btns">
+                        ${[1, 2, 3, 4, 5].map(s => `<button class="score-btn score-${s}" onclick="handleReview(${item.id}, ${s})">${s}</button>`).join('')}
+                    </div>
+                `;
+                reviewList.appendChild(div);
+            });
         }
 
-        dueItems.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'card';
-            div.innerHTML = `
-                <div style="font-size:18px; font-weight:bold; margin-bottom:15px;">${item.content}</div>
-                <div style="font-size:13px; color:#666; margin-bottom:10px;">記憶難度 (1忘記 → 5超簡單)：</div>
-                <div class="score-btns">
-                    ${[1, 2, 3, 4, 5].map(s => `
-                        <button class="score-btn score-${s}" onclick="handleReview(${item.id}, ${s})">${s}</button>
-                    `).join('')}
+        // 2. 渲染所有清單與倒數時間
+        const inventory = document.getElementById('full-inventory');
+        inventory.innerHTML = "";
+        
+        // 按照時間排序，近的在前
+        const sortedData = [...data].sort((a, b) => a.nextReview - b.nextReview);
+
+        sortedData.forEach(item => {
+            const timeInfo = getTimeLeft(item.nextReview);
+            const row = document.createElement('div');
+            row.className = 'item-row';
+            row.innerHTML = `
+                <div style="flex:1;">${item.content}</div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span class="time-tag ${timeInfo.class}">${timeInfo.text}</span>
+                    <button class="del-btn" onclick="deleteItem(${item.id})">×</button>
                 </div>
             `;
-            list.appendChild(div);
+            inventory.appendChild(row);
         });
     }
 
-    // 匯出功能
+    // 每分鐘自動重新渲染一次，更新時間標籤
+    setInterval(render, 60000);
+
     function exportData() {
-        if (data.length === 0) return alert("目前沒有資料可以匯出");
+        if (data.length === 0) return alert("目前沒有資料");
         const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
-        a.download = `MemoryFlow_${currentUser}_${new Date().toLocaleDateString()}.json`;
+        a.href = URL.createObjectURL(blob);
+        a.download = `MemoryFlow_${currentUser}.json`;
         a.click();
     }
 
-    // 匯入功能
     function importData(event) {
-        const file = event.target.files[0];
-        if (!file) return;
         const reader = new FileReader();
-        reader.onload = function(e) {
-            try {
-                const imported = JSON.parse(e.target.result);
-                if (confirm(`確定要匯入 ${imported.length} 筆資料嗎？這將會覆蓋目前進度。`)) {
-                    data = imported;
-                    saveData();
-                    alert("匯入成功！");
-                }
-            } catch (err) {
-                alert("檔案格式錯誤");
-            }
+        reader.onload = e => {
+            data = JSON.parse(e.target.result);
+            saveData();
         };
-        reader.readAsText(file);
+        reader.readAsText(event.target.files[0]);
     }
 </script>
-
 </body>
 </html>
