@@ -3,21 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MemoryFlow - 智能複習助手</title>
+    <title>MemoryFlow Pro - 智能複習助手</title>
     <style>
-        :root { --primary: #4a90e2; --bg: #f5f7fa; --card: #ffffff; }
+        :root { --primary: #4a90e2; --bg: #f5f7fa; --card: #ffffff; --success: #27ae60; --danger: #e74c3c; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .container { max-width: 500px; width: 100%; }
-        .card { background: var(--card); padding: 20px; border-radius: 15px; shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-        h2 { color: #333; margin-top: 0; }
-        input, select, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 16px; }
-        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; }
-        button:active { opacity: 0.8; }
-        .score-btns { display: grid; grid-template-columns: repeat(5, 1-fr); gap: 5px; display: flex; }
-        .score-btn { flex: 1; background: #6c757d; }
-        .score-1 { background: #e74c3c; } .score-5 { background: #27ae60; }
+        .card { background: var(--card); padding: 20px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        h2, h3 { color: #333; margin-top: 0; }
+        input, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 16px; }
+        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:active { transform: scale(0.98); opacity: 0.9; }
+        .score-btns { display: flex; gap: 5px; margin-top: 10px; }
+        .score-btn { flex: 1; background: #6c757d; padding: 10px 0; }
+        .score-1 { background: var(--danger); } .score-5 { background: var(--success); }
         .hidden { display: none; }
-        .user-tag { font-size: 0.8em; color: var(--primary); font-weight: bold; }
+        .user-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .user-tag { font-size: 0.9em; color: var(--primary); font-weight: bold; }
+        .backup-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+        .btn-alt { background: #f0f2f5; color: #333; border: 1px solid #ddd; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -25,24 +28,30 @@
 <div class="container">
     <div id="login-section" class="card">
         <h2>登入複習帳號</h2>
-        <input type="text" id="username" placeholder="輸入你的名字 (例如: 小明)">
-        <button onclick="login()">開始複習</button>
+        <input type="text" id="username" placeholder="輸入名字 (例如: 小明)">
+        <button onclick="login()">進入系統</button>
     </div>
 
     <div id="main-section" class="hidden">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div class="user-header">
             <span class="user-tag" id="display-user"></span>
-            <button onclick="logout()" style="width: auto; padding: 5px 10px; background: #999;">切換用戶</button>
+            <button onclick="logout()" style="width: auto; padding: 5px 12px; background: #999;">切換用戶</button>
         </div>
 
         <div class="card">
             <h3>新增複習項目</h3>
-            <input type="text" id="new-item" placeholder="輸入要複習的主題...">
+            <input type="text" id="new-item" placeholder="例如: 英文單字 apple">
             <button onclick="addItem()">加入清單</button>
         </div>
 
-        <h3>今日待複習</h3>
+        <h3>📅 今日待複習</h3>
         <div id="review-list"></div>
+
+        <div class="backup-btns">
+            <button class="btn-alt" onclick="exportData()">📥 匯出進度備份</button>
+            <button class="btn-alt" onclick="document.getElementById('importFile').click()">📤 匯入備份檔案</button>
+            <input type="file" id="importFile" class="hidden" accept=".json" onchange="importData(event)">
+        </div>
     </div>
 </div>
 
@@ -50,24 +59,23 @@
     let currentUser = "";
     let data = [];
 
+    // 登入邏輯
     function login() {
         const name = document.getElementById('username').value.trim();
         if (!name) return alert("請輸入名字");
         currentUser = name;
-        document.getElementById('display-user').innerText = `目前使用者：${currentUser}`;
+        document.getElementById('display-user').innerText = `👤 ${currentUser}`;
         document.getElementById('login-section').classList.add('hidden');
         document.getElementById('main-section').classList.remove('hidden');
         loadData();
-        render();
     }
 
-    function logout() {
-        location.reload();
-    }
+    function logout() { location.reload(); }
 
     function loadData() {
         const saved = localStorage.getItem(`memflow_${currentUser}`);
         data = saved ? JSON.parse(saved) : [];
+        render();
     }
 
     function saveData() {
@@ -75,6 +83,7 @@
         render();
     }
 
+    // 新增項目
     function addItem() {
         const content = document.getElementById('new-item').value.trim();
         if (!content) return;
@@ -82,36 +91,36 @@
             id: Date.now(),
             content: content,
             nextReview: Date.now(),
-            interval: 1 // 初始間隔（小時）
+            interval: 1 // 初始間隔(小時)
         });
         document.getElementById('new-item').value = "";
         saveData();
     }
 
+    // 複習邏輯：1-5 分評分
     function handleReview(id, score) {
         const item = data.find(i => i.id === id);
-        // 簡單演算法：新間隔 = 舊間隔 * (分數/2) * 艾賓浩斯係數
-        const factors = { 1: 0, 2: 1.2, 3: 2, 4: 4, 5: 10 };
+        const factors = { 1: 0, 2: 1.5, 3: 3, 4: 8, 5: 24 }; // 難度加權係數
         
         if (score === 1) {
-            item.interval = 1; // 忘記了，重頭開始
+            item.interval = 1; // 忘記了，1小時後重來
         } else {
-            item.interval = item.interval * factors[score];
+            item.interval = Math.max(1, item.interval * factors[score]);
         }
         
-        item.nextReview = Date.now() + (item.interval * 60 * 60 * 1000); // 轉為毫秒
+        item.nextReview = Date.now() + (item.interval * 60 * 60 * 1000);
         saveData();
     }
 
+    // 渲染清單
     function render() {
         const list = document.getElementById('review-list');
         list.innerHTML = "";
         const now = Date.now();
-        
         const dueItems = data.filter(item => item.nextReview <= now);
 
         if (dueItems.length === 0) {
-            list.innerHTML = "<p style='text-align:center; color:#888;'>目前沒有待複習的項目！</p>";
+            list.innerHTML = "<div style='text-align:center; padding:20px; color:#888;'>目前沒任務，去休息吧！☕</div>";
             return;
         }
 
@@ -119,8 +128,8 @@
             const div = document.createElement('div');
             div.className = 'card';
             div.innerHTML = `
-                <div style="font-weight:bold; margin-bottom:10px;">${item.content}</div>
-                <p style="font-size:12px; color:#666;">請評估記憶難度 (1最難 - 5最易)：</p>
+                <div style="font-size:18px; font-weight:bold; margin-bottom:15px;">${item.content}</div>
+                <div style="font-size:13px; color:#666; margin-bottom:10px;">記憶難度 (1忘記 → 5超簡單)：</div>
                 <div class="score-btns">
                     ${[1, 2, 3, 4, 5].map(s => `
                         <button class="score-btn score-${s}" onclick="handleReview(${item.id}, ${s})">${s}</button>
@@ -129,6 +138,37 @@
             `;
             list.appendChild(div);
         });
+    }
+
+    // 匯出功能
+    function exportData() {
+        if (data.length === 0) return alert("目前沒有資料可以匯出");
+        const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `MemoryFlow_${currentUser}_${new Date().toLocaleDateString()}.json`;
+        a.click();
+    }
+
+    // 匯入功能
+    function importData(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const imported = JSON.parse(e.target.result);
+                if (confirm(`確定要匯入 ${imported.length} 筆資料嗎？這將會覆蓋目前進度。`)) {
+                    data = imported;
+                    saveData();
+                    alert("匯入成功！");
+                }
+            } catch (err) {
+                alert("檔案格式錯誤");
+            }
+        };
+        reader.readAsText(file);
     }
 </script>
 
